@@ -2,22 +2,34 @@
   "name": "ripgrepjs",
   "version": "0.1.0",
   "description": "Node.js bindings to the ripgrep library, for fast file searching in JavaScript without child processes!",
-  "main": "index.node",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": "github:AnnikaCodes/ripgrepjs",
+  "files": [
+    "dist/src",
+    "!dist/src/tests",
+    "dist/ripgrepjs.node"
+  ],
   "scripts": {
-    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
+    "build": "tsc && cargo-cp-artifact -nc dist/ripgrepjs.node -- cargo build --message-format=json-render-diagnostics",
     "build-debug": "npm run build --",
     "build-release": "npm run build -- --release",
     "install": "npm run build-release",
-    "test": "cargo test"
+    "test": "cargo test && npm run lint && npm run build",
+    "lint": "eslint src --ext .ts && cargo clippy && cargo fmt",
+    "fix": "eslint src --ext .ts --fix && cargo clippy --fix && cargo fmt"
   },
   "author": "Annika L.",
   "license": "MIT",
   "devDependencies": {
-    "cargo-cp-artifact": "^0.1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/AnnikaCodes/ripgrepjs.git"
+    "@pkmn/eslint-config": "^1.1.0",
+    "@typescript-eslint/eslint-plugin": "^5.3.0",
+    "@typescript-eslint/parser": "^5.3.0",
+    "cargo-cp-artifact": "^0.1",
+    "eslint": "^8.2.0",
+    "eslint-plugin-import": "^2.25.2",
+    "eslint-plugin-jest": "^25.2.3",
+    "typescript": "^4.4.4"
   },
   "keywords": [
     "ripgrep",

@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "downlevelIteration": true,
+        "incremental": true,
+        "declaration": true,
+        "module": "commonjs",
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "strict": true,
+        "target": "es6",
+    },
+    "include": ["src/*.ts"]
+}

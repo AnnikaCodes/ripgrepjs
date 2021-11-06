@@ -4,12 +4,7 @@
 //! - to support the use of BurntSushi's `grep` crate from within Node.js
 //! - to simplify the `grep` crate's API to make it more user-friendly
 
-use std::{
-    convert::Infallible,
-    path::Path,
-    str::Utf8Error,
-    sync::Arc,
-};
+use std::{convert::Infallible, path::Path, str::Utf8Error, sync::Arc};
 
 use grep::{
     matcher::LineTerminator,
@@ -53,7 +48,6 @@ impl From<grep::regex::Error> for RipgrepjsError {
         RipgrepjsError::Regex(error)
     }
 }
-
 
 impl SinkError for RipgrepjsError {
     fn error_message<T: std::fmt::Display>(message: T) -> Self {
@@ -149,10 +143,7 @@ impl JSCallbackSink {
     /// `matchedLines` is an array of lines that matchsed the search pattern.
     /// It should have length 1 unless multiline searching is enabled.
     fn new(on_match: Arc<Root<JsFunction>>, channel: Channel) -> Self {
-        Self {
-            channel,
-            on_match,
-        }
+        Self { channel, on_match }
     }
 }
 
@@ -236,7 +227,13 @@ where
     P: AsRef<Path>,
 {
     let matcher = matcher_opts.to_matcher()?;
-    search_directory_inner(directory, &searcher_opts, &matcher, Arc::new(callback), js_context.channel())
+    search_directory_inner(
+        directory,
+        &searcher_opts,
+        &matcher,
+        Arc::new(callback),
+        js_context.channel(),
+    )
 }
 
 fn search_directory_inner<P>(
@@ -256,7 +253,12 @@ where
             // TODO: use our own threading system
             // (Rayon + one thread to call the JS callback)
             // (we can't share the JS context across threads)
-            || (searcher_opts.to_searcher(), JSCallbackSink::new(callback.clone(), channel.clone())),
+            || {
+                (
+                    searcher_opts.to_searcher(),
+                    JSCallbackSink::new(callback.clone(), channel.clone()),
+                )
+            },
             |(searcher, sink), entry| -> Result<(), RipgrepjsError> {
                 if let Ok(entry) = entry {
                     // Recurse further into directories
@@ -268,7 +270,7 @@ where
                             searcher_opts,
                             matcher,
                             callback.clone(),
-                            channel.clone()
+                            channel.clone(),
                         );
                     }
 
@@ -283,28 +285,44 @@ where
 }
 
 /// helper to get ints from a JS obj
-fn get_int_from_js_object<'a>(obj: Handle<JsObject>, cx: &mut impl Context<'a>, key: &str) -> Result<usize, Throw> {
+fn get_int_from_js_object<'a>(
+    obj: Handle<JsObject>,
+    cx: &mut impl Context<'a>,
+    key: &str,
+) -> Result<usize, Throw> {
     match obj.get(cx, key) {
         Ok(item) => Ok(item.downcast_or_throw::<JsNumber, _>(cx)?.value(cx) as usize),
         Err(e) => Err(e),
     }
 }
 
-fn get_possible_int_from_js_object<'a>(obj: Handle<JsObject>, cx: &mut impl Context<'a>, key: &str) -> Option<usize> {
+fn get_possible_int_from_js_object<'a>(
+    obj: Handle<JsObject>,
+    cx: &mut impl Context<'a>,
+    key: &str,
+) -> Option<usize> {
     match obj.get(cx, key) {
         Ok(item) => Some(item.downcast::<JsNumber, _>(cx).ok()?.value(cx) as usize),
         Err(_) => None,
     }
 }
 
-fn get_bool_from_js_object<'a>(obj: Handle<JsObject>, cx: &mut impl Context<'a>, key: &str) -> Result<bool, Throw> {
+fn get_bool_from_js_object<'a>(
+    obj: Handle<JsObject>,
+    cx: &mut impl Context<'a>,
+    key: &str,
+) -> Result<bool, Throw> {
     match obj.get(cx, key) {
         Ok(item) => Ok(item.downcast_or_throw::<JsBoolean, _>(cx)?.value(cx)),
         Err(e) => Err(e),
     }
 }
 
-fn get_string_from_js_object<'a>(obj: Handle<JsObject>, cx: &mut impl Context<'a>, key: &str) -> Result<String, Throw> {
+fn get_string_from_js_object<'a>(
+    obj: Handle<JsObject>,
+    cx: &mut impl Context<'a>,
+    key: &str,
+) -> Result<String, Throw> {
     match obj.get(cx, key) {
         Ok(item) => Ok(item.downcast_or_throw::<JsString, _>(cx)?.value(cx)),
         Err(e) => Err(e),
@@ -366,7 +384,13 @@ fn multithreaded_search_directory(mut cx: FunctionContext) -> JsResult<JsUndefin
         pattern: pattern.as_str(),
     };
 
-    if let Err(e) = search_directory_with_rayon(searcher_opts, matcher_opts, path, callback.root(&mut cx), &mut cx) {
+    if let Err(e) = search_directory_with_rayon(
+        searcher_opts,
+        matcher_opts,
+        path,
+        callback.root(&mut cx),
+        &mut cx,
+    ) {
         cx.throw_error(format!("Rust Error: {:?}", e))?;
     }
 
@@ -375,5 +399,8 @@ fn multithreaded_search_directory(mut cx: FunctionContext) -> JsResult<JsUndefin
 
 #[neon::main]
 fn main(mut cx: ModuleContext) -> NeonResult<()> {
-    cx.export_function("multithreadedSearchDirectory", multithreaded_search_directory)
+    cx.export_function(
+        "multithreadedSearchDirectory",
+        multithreaded_search_directory,
+    )
 }
