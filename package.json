@@ -1,0 +1,32 @@
+{
+  "name": "ripgrepjs",
+  "version": "0.1.0",
+  "description": "Node.js bindings to the ripgrep library, for fast file searching in JavaScript without child processes!",
+  "main": "index.node",
+  "scripts": {
+    "build": "cargo-cp-artifact -nc index.node -- cargo build --message-format=json-render-diagnostics",
+    "build-debug": "npm run build --",
+    "build-release": "npm run build -- --release",
+    "install": "npm run build-release",
+    "test": "cargo test"
+  },
+  "author": "Annika L.",
+  "license": "MIT",
+  "devDependencies": {
+    "cargo-cp-artifact": "^0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AnnikaCodes/ripgrepjs.git"
+  },
+  "keywords": [
+    "ripgrep",
+    "grep",
+    "searching",
+    "rust"
+  ],
+  "bugs": {
+    "url": "https://github.com/AnnikaCodes/ripgrepjs/issues"
+  },
+  "homepage": "https://github.com/AnnikaCodes/ripgrepjs#readme"
+}

@@ -1,0 +1,22 @@
+[package]
+name = "ripgrepjs"
+version = "0.1.0"
+description = "Node.js bindings to the ripgrep library, for direct integration with JS programs without spawning an extra subprocess!"
+authors = ["Annika L."]
+license = "MIT"
+edition = "2018"
+exclude = ["index.node"]
+
+[lib]
+crate-type = ["cdylib"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+grep = "0.2.8"
+rayon = "1.5.1"
+
+[dependencies.neon]
+version = "0.9"
+default-features = false
+features = ["napi-6", "channel-api"]
