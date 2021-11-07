@@ -154,27 +154,9 @@ impl JSCallbackSink {
             inner_buf: vec![],
         }
     }
-}
 
-impl<'a> grep::searcher::Sink for JSCallbackSink {
-    type Error = RipgrepjsError;
-
-    fn matched(&mut self, _: &Searcher, matched: &SinkMatch) -> Result<bool, Self::Error> {
-        let line_number = matched.line_number();
-        // TODO: perf improvements possible here?
-        let lines_iter = matched
-            .lines()
-            .map(|line| match std::str::from_utf8(line) {
-                Ok(s) => Ok(s.to_string()),
-                Err(e) => Err(e),
-            })
-            .collect::<Vec<_>>();
-        self.inner_buf.push((lines_iter, line_number));
-
-        Ok(true)
-    }
-
-    fn finish(&mut self, _: &Searcher, _: &SinkFinish) -> Result<(), Self::Error> {
+    #[inline]
+    fn flush(&mut self) {
         let callback = self.on_match.clone();
 
         let mut buf = vec![];
@@ -215,6 +197,29 @@ impl<'a> grep::searcher::Sink for JSCallbackSink {
                 .call(&mut context, null, vec![js_matches])?;
             Ok(())
         });
+    }
+}
+
+impl<'a> grep::searcher::Sink for JSCallbackSink {
+    type Error = RipgrepjsError;
+
+    fn matched(&mut self, _: &Searcher, matched: &SinkMatch) -> Result<bool, Self::Error> {
+        let line_number = matched.line_number();
+        // TODO: perf improvements possible here?
+        let lines_iter = matched
+            .lines()
+            .map(|line| match std::str::from_utf8(line) {
+                Ok(s) => Ok(s.to_string()),
+                Err(e) => Err(e),
+            })
+            .collect::<Vec<_>>();
+        self.inner_buf.push((lines_iter, line_number));
+
+        Ok(true)
+    }
+
+    fn finish(&mut self, _: &Searcher, _: &SinkFinish) -> Result<(), Self::Error> {
+        self.flush();
         Ok(())
     }
 }
