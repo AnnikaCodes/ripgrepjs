@@ -53,6 +53,10 @@ impl SinkError for RipgrepjsError {
     fn error_message<T: std::fmt::Display>(message: T) -> Self {
         RipgrepjsError::Sink(format!("{}", message))
     }
+
+    fn error_io(err: std::io::Error) -> Self {
+        RipgrepjsError::IO(err)
+    }
 }
 /// Options for building a searcher
 pub struct SearcherOptions {
@@ -262,7 +266,11 @@ where
             |(searcher, sink), entry| -> Result<(), RipgrepjsError> {
                 if let Ok(entry) = entry {
                     // Recurse further into directories
-                    if entry.file_type()?.is_dir() {
+                    let file_type = entry.file_type()?;
+                    if file_type.is_file() {
+                        // otherwise, search the file
+                        searcher.search_path(matcher, entry.path(), sink).unwrap();
+                    } else if file_type.is_dir() {
                         // Rayon _should_ use the global thread pool,
                         // meaning this will go on the same work pool as other directories.
                         return search_directory_inner(
@@ -273,9 +281,6 @@ where
                             channel.clone(),
                         );
                     }
-
-                    // otherwise, search the file
-                    searcher.search_path(matcher, entry.path(), sink)?;
                 }
                 Ok(())
             },
