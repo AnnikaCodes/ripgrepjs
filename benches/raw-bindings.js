@@ -25,6 +25,6 @@ const options = {
 
 multithreadedSearchDirectory(options, process.argv.pop(), (matchedLines) => {
     for (const line of matchedLines) {
-        console.log(line.matchedLines);
+        console.log(line.matchedLines[0]);
     }
 });

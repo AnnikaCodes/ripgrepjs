@@ -39,20 +39,26 @@ export interface RipgrepOptions {
 }
 
 export interface RipgrepResult {
-	lines: string[];
+	/**
+	 * A line is only ever `null` when an error is encountered parsing it as UTF-8.
+	 *
+	 * Due to a bug in Neon (https://github.com/neon-bindings/neon/issues/819), we're currently unable to throw errors.
+	 */
+	lines: (string | null)[];
 	lineNumber?: number;
 }
 
 const multithreadedSearchDirectory = require('./ripgrepjs.node').multithreadedSearchDirectory as (
 	options: RipgrepOptions,
 	path: string,
-	onResult: (result: RipgrepResult) => void
+	/** null when search is over */
+	onResult: (result: RipgrepResult | null) => void
 ) => void;
 
 /**
  * Searches a directory with multithreading, returning results through an EventEmitter.
  *
- * @returns An EventEmitter whose 'result' event will emit RipgrepResult objects.
+ * @returns An EventEmitter whose 'result' event will emit RipgrepResult objects. The
  */
 export function searchWithEventEmitter(options: Partial<RipgrepOptions> & {pattern: string}, path: string) {
 	const rustOptions: RipgrepOptions = {
@@ -78,7 +84,11 @@ export function searchWithEventEmitter(options: Partial<RipgrepOptions> & {patte
 
 	const emitter = new EventEmitter();
 	multithreadedSearchDirectory(rustOptions, path, result => {
-		emitter.emit('result', result);
+		if (result === null) {
+			emitter.emit('done');
+		} else {
+			emitter.emit('result', result);
+		}
 	});
 	return emitter;
 }
