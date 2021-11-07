@@ -15,8 +15,8 @@
  */
 
 import {EventEmitter} from 'events';
-
-// TODO: implement
+// TODO: figure out if an async iterator is possible
+// TODO: Support buffering it all in Rust to make it faster (or maybe only buffer n entries in a Vec?)
 export interface RipgrepOptions {
 	afterContext: number;
 	beforeContext: number;
@@ -80,4 +80,3 @@ export function searchWithEventEmitter(options: Partial<RipgrepOptions> & {patte
 	});
 	return emitter;
 }
-

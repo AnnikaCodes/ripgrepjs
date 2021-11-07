@@ -42,7 +42,5 @@
     "url": "https://github.com/AnnikaCodes/ripgrepjs/issues"
   },
   "homepage": "https://github.com/AnnikaCodes/ripgrepjs#readme",
-  "dependencies": {
-    "callback-to-async-iterator": "^1.1.1"
-  }
+  "dependencies": {}
 }
