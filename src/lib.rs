@@ -6,11 +6,7 @@
 
 use std::{convert::Infallible, path::Path, str::Utf8Error, sync::Arc};
 
-use grep::{
-    matcher::LineTerminator,
-    regex::{RegexMatcher, RegexMatcherBuilder},
-    searcher::{Searcher, SearcherBuilder, SinkError, SinkMatch},
-};
+use grep::{matcher::LineTerminator, regex::{RegexMatcher, RegexMatcherBuilder}, searcher::{BinaryDetection, Searcher, SearcherBuilder, SinkError, SinkMatch}};
 use neon::{macro_internal::runtime::string, prelude::*, result::Throw};
 use rayon::prelude::*;
 
@@ -139,6 +135,8 @@ struct JSCallbackSink {
     on_match: Arc<Root<JsFunction>>,
     // Sends a match to the calling thread so that it can be passed to the JavaScript callback
     channel: Channel,
+    inner_buf: Vec<(Vec<Result<String, Utf8Error>>, Option<u64>)>,
+    to_buffer: usize,
 }
 
 impl JSCallbackSink {
@@ -146,8 +144,8 @@ impl JSCallbackSink {
     ///
     /// `matchedLines` is an array of lines that matchsed the search pattern.
     /// It should have length 1 unless multiline searching is enabled.
-    fn new(on_match: Arc<Root<JsFunction>>, channel: Channel) -> Self {
-        Self { channel, on_match }
+    fn new(on_match: Arc<Root<JsFunction>>, channel: Channel, to_buffer: usize) -> Self {
+        Self { channel, on_match, inner_buf: Vec::with_capacity(to_buffer), to_buffer }
     }
 }
 
@@ -157,43 +155,51 @@ impl<'a> grep::searcher::Sink for JSCallbackSink {
     fn matched(&mut self, _: &Searcher, matched: &SinkMatch) -> Result<bool, Self::Error> {
         let line_number = matched.line_number();
         // TODO: perf improvements possible here?
-        let mut lines_iter = matched
+        let lines_iter = matched
             .lines()
             .map(|line| match std::str::from_utf8(line) {
                 Ok(s) => Ok(s.to_string()),
                 Err(e) => Err(e),
             })
             .collect::<Vec<_>>();
+        self.inner_buf.push((lines_iter, line_number));
 
-        let callback = self.on_match.clone();
-        self.channel.send(move |mut context| {
-            let js_match_object = context.empty_object();
+        if self.inner_buf.len() > self.to_buffer {
+            let callback = self.on_match.clone();
 
-            if let Some(line_num) = line_number {
-                let js_line_num = context.number(line_num as f64);
-                js_match_object.set(&mut context, "lineNumber", js_line_num)?;
-            }
+            let mut buf = Vec::with_capacity(self.to_buffer);
+            std::mem::swap(&mut buf, &mut self.inner_buf);
+            self.channel.send(move |mut context| {
+                let js_matches = context.empty_array();
+                let mut i = 0;
+                for (lines, number) in buf.drain(..) {
+                    let js_lines = context.empty_array();
+                    let js_match_object = context.empty_object();
+                    for (idx, line) in lines.iter().enumerate() {
+                        let line = match line {
+                            Ok(s) => s,
+                            Err(e) => context.throw_error(format!(
+                                "Error converting byte sequence to a string using UTF-8: {}",
+                                e
+                            ))?,
+                        };
+                        let js_line = context.string(line);
+                        js_lines.set(&mut context, idx as u32, js_line)?;
+                    }
+                    js_match_object.set(&mut context, "matchedLines", js_lines)?;
+                    if let Some(line_number) = number {
+                        let n = context.number(line_number as f64);
+                        js_match_object.set(&mut context, "lineNumber", n)?;
+                    }
 
-            let js_lines = context.empty_array();
-            for (idx, line) in lines_iter.iter_mut().enumerate() {
-                let line = match line {
-                    Ok(s) => s,
-                    Err(e) => context.throw_error(format!(
-                        "Error converting byte sequence to a string using UTF-8: {}",
-                        e
-                    ))?,
-                };
-                let js_line = context.string(line);
-                js_lines.set(&mut context, idx as u32, js_line)?;
-            }
-            js_match_object.set(&mut context, "matchedLines", js_lines)?;
-
-            let null = context.null();
-            callback
-                .to_inner(&mut context)
-                .call(&mut context, null, vec![js_match_object])?;
-            Ok(())
-        });
+                    js_matches.set(&mut context, i, js_match_object)?;
+                    i += 1;
+                }
+                let null = context.null();
+                callback.to_inner(&mut context).call(&mut context, null, vec![js_matches]).unwrap();
+                Ok(())
+            });
+        }
         Ok(true)
     }
 }
@@ -212,7 +218,7 @@ where
     let mut searcher = searcher_opts.to_searcher();
     let matcher = matcher_opts.to_matcher()?;
     let mut channel = js_context.channel();
-    let sink = JSCallbackSink::new(Arc::new(callback.root(js_context)), channel);
+    let sink = JSCallbackSink::new(Arc::new(callback.root(js_context)), channel, 100_000);
 
     searcher.search_path(matcher, file, sink)
 }
@@ -231,26 +237,9 @@ where
     P: AsRef<Path>,
 {
     let matcher = matcher_opts.to_matcher()?;
-    search_directory_inner(
-        directory,
-        &searcher_opts,
-        &matcher,
-        Arc::new(callback),
-        js_context.channel(),
-    )
-}
-
-fn search_directory_inner<P>(
-    path: P,
-    searcher_opts: &SearcherOptions,
-    matcher: &RegexMatcher,
-    callback: Arc<Root<JsFunction>>,
-    channel: Channel,
-) -> Result<(), RipgrepjsError>
-where
-    P: AsRef<Path>,
-{
-    std::fs::read_dir(path)?
+    let callback = Arc::new(callback);
+    let channel = js_context.channel();
+    walkdir::WalkDir::new(directory).into_iter()
         .collect::<Vec<_>>()
         .par_iter()
         .try_for_each_init(
@@ -260,32 +249,18 @@ where
             || {
                 (
                     searcher_opts.to_searcher(),
-                    JSCallbackSink::new(callback.clone(), channel.clone()),
+                    JSCallbackSink::new(callback.clone(), channel.clone(), 250_000),
                 )
             },
             |(searcher, sink), entry| -> Result<(), RipgrepjsError> {
                 if let Ok(entry) = entry {
-                    // Recurse further into directories
-                    let file_type = entry.file_type()?;
-                    if file_type.is_file() {
-                        // otherwise, search the file
-                        searcher.search_path(matcher, entry.path(), sink).unwrap();
-                    } else if file_type.is_dir() {
-                        // Rayon _should_ use the global thread pool,
-                        // meaning this will go on the same work pool as other directories.
-                        return search_directory_inner(
-                            entry.path(),
-                            searcher_opts,
-                            matcher,
-                            callback.clone(),
-                            channel.clone(),
-                        );
+                    if entry.file_type().is_file() {
+                        searcher.search_path(&matcher, entry.path(), sink).unwrap()
                     }
                 }
                 Ok(())
             },
         )?;
-
     Ok(())
 }
 

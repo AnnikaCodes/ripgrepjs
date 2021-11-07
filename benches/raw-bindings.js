@@ -22,4 +22,8 @@ const options = {
     pattern: "fo+"
 };
 
-multithreadedSearchDirectory(options, process.argv.pop(), ({matchedLines}) => console.log(matchedLines[0]));
+multithreadedSearchDirectory(options, process.argv.pop(), (matchedLines) => {
+    for (const line of matchedLines) {
+        console.log(line.matchedLines);
+    }
+});
