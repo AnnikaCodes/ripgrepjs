@@ -155,13 +155,12 @@ impl<'a> grep::searcher::Sink for JSCallbackSink {
     fn matched(&mut self, _: &Searcher, matched: &SinkMatch) -> Result<bool, Self::Error> {
         let line_number = matched.line_number();
         // TODO: perf improvements possible here?
-        let lines_iter = matched
-            .lines()
-            .map(|line| match std::str::from_utf8(line) {
-                Ok(s) => Ok(s.to_string()),
-                Err(e) => Err(e),
-            })
-            .collect::<Vec<_>>();
+        let lines_iter = matched.lines().cloned();
+            // .map(|line| match std::str::from_utf8(line) {
+            //     Ok(s) => Ok(s.to_string()),
+            //     Err(e) => Err(e),
+            // })
+            // .collect::<Vec<_>>();
         self.inner_buf.push((lines_iter, line_number));
 
         if self.inner_buf.len() > self.to_buffer {
@@ -172,7 +171,7 @@ impl<'a> grep::searcher::Sink for JSCallbackSink {
             self.channel.send(move |mut context| {
                 let js_matches = context.empty_array();
                 let mut i = 0;
-                for (lines, number) in buf.drain(..) {
+                while let Some((lines, number)) = buf.pop() {
                     let js_lines = context.empty_array();
                     let js_match_object = context.empty_object();
                     for (idx, line) in lines.iter().enumerate() {
@@ -211,6 +210,7 @@ fn search_file<P>(
     file: P,
     callback: JsFunction,
     js_context: &mut FunctionContext,
+    to_buffer: usize,
 ) -> Result<(), RipgrepjsError>
 where
     P: AsRef<Path>,
@@ -218,7 +218,7 @@ where
     let mut searcher = searcher_opts.to_searcher();
     let matcher = matcher_opts.to_matcher()?;
     let mut channel = js_context.channel();
-    let sink = JSCallbackSink::new(Arc::new(callback.root(js_context)), channel, 100_000);
+    let sink = JSCallbackSink::new(Arc::new(callback.root(js_context)), channel, to_buffer);
 
     searcher.search_path(matcher, file, sink)
 }
@@ -232,6 +232,7 @@ fn search_directory_with_rayon<P>(
     directory: P,
     callback: Root<JsFunction>,
     js_context: &mut FunctionContext,
+    to_buffer: usize,
 ) -> Result<(), RipgrepjsError>
 where
     P: AsRef<Path>,
@@ -249,7 +250,7 @@ where
             || {
                 (
                     searcher_opts.to_searcher(),
-                    JSCallbackSink::new(callback.clone(), channel.clone(), 250_000),
+                    JSCallbackSink::new(callback.clone(), channel.clone(), to_buffer),
                 )
             },
             |(searcher, sink), entry| -> Result<(), RipgrepjsError> {
@@ -327,6 +328,7 @@ fn get_string_from_js_object<'a>(
 ///         octal: boolean,
 ///         crlf: boolean,
 ///         wordBoudariesOnly: boolean,
+///         numMatchesToBuffer: number,
 ///         pattern: string,
 ///     },
 ///     path: string,
@@ -364,12 +366,14 @@ fn multithreaded_search_directory(mut cx: FunctionContext) -> JsResult<JsUndefin
         pattern: pattern.as_str(),
     };
 
+    let to_buffer = get_int_from_js_object(options, &mut cx, "numMatchesToBuffer")?;
     if let Err(e) = search_directory_with_rayon(
         searcher_opts,
         matcher_opts,
         path,
         callback.root(&mut cx),
         &mut cx,
+        to_buffer,
     ) {
         cx.throw_error(format!("Rust Error: {:?}", e))?;
     }

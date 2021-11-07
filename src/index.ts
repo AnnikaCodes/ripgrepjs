@@ -34,6 +34,7 @@ export interface RipgrepOptions {
 	octal: boolean;
 	crlf: boolean;
 	wordBoundariesOnly: boolean;
+	numMatchesToBuffer: number;
 	pattern: string;
 }
 
@@ -70,6 +71,7 @@ export function searchWithEventEmitter(options: Partial<RipgrepOptions> & {patte
 		octal: options.octal ?? false,
 		crlf: options.crlf || false,
 		wordBoundariesOnly: options.wordBoundariesOnly || false,
+		numMatchesToBuffer: options.numMatchesToBuffer || 100000,
 		pattern: options.pattern,
 	};
 	if (typeof options.heapLimit === 'number') rustOptions.heapLimit = options.heapLimit;

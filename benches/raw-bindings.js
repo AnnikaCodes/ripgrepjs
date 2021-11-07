@@ -19,6 +19,7 @@ const options = {
     octal: false,
     crlf: false,
     wordBoundariesOnly: false,
+    numMatchesToBuffer: 50000,
     pattern: "fo+"
 };
 
